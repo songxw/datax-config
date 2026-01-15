@@ -62,7 +62,7 @@ datax-config/
 
 ### 1. 克隆项目
 ```bash
-git clone https://github.com/your-username/datax-config.git
+git clone https://github.com/songxw/datax-config.git
 cd datax-config
 ```
 
@@ -210,9 +210,9 @@ curl -X POST http://localhost:8000/api/convert \
 
 ## 📞 联系方式
 
-- 项目维护者：[Your Name]
-- 邮箱：your.email@example.com
-- 项目地址：https://github.com/your-username/datax-config
+- 项目维护者：[Harper]
+- 邮箱：songxw2@qq.com
+- 项目地址：https://github.com/songxw/datax-config
 
 ## 🙏 致谢
 
