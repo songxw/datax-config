@@ -1,0 +1,29 @@
+# Web Framework
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+
+# HTTP Client
+httpx==0.25.2
+
+# CORS
+python-multipart==0.0.6
+
+# Logging
+loguru==0.7.2
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Development Tools
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
+
+# Database Drivers (optional, for testing)
+# pymysql==1.1.0          # MySQL
+# psycopg2-binary==2.9.9  # PostgreSQL
+# cx-oracle==8.3.0        # Oracle
+# pyodbc==5.0.1          # SQL Server
