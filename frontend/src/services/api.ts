@@ -33,11 +33,11 @@ api.interceptors.response.use(
 // 获取支持的数据库列表
 export const getSupportedDB = async (): Promise<SupportedDB> => {
   const response = await api.get<SupportedDB>('/supported-db')
-  return response
+  return response as unknown as SupportedDB
 }
 
 // 转换DDL
 export const convertDDL = async (request: ConvertRequest): Promise<ConvertResponse> => {
   const response = await api.post<ConvertResponse>('/convert', request)
-  return response
+  return response as unknown as ConvertResponse
 }

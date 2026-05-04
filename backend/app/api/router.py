@@ -93,7 +93,9 @@ async def get_supported_databases():
             {"value": "sqlserver", "label": "SQL Server"}
         ],
         "target_databases": [
-            {"value": "doris", "label": "Apache Doris"}
+            {"value": "doris", "label": "Apache Doris"},
+            {"value": "clickhouse", "label": "ClickHouse"},
+            {"value": "greenplum", "label": "Greenplum"}
         ],
         "sync_tools": [
             {"value": "datax", "label": "DataX"},

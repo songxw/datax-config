@@ -17,6 +17,8 @@ class SourceDBType(str, Enum):
 class TargetDBType(str, Enum):
     """目标数据库类型"""
     DORIS = "doris"
+    CLICKHOUSE = "clickhouse"
+    GREENPLUM = "greenplum"
 
 
 class SyncToolType(str, Enum):
