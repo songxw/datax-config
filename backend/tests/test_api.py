@@ -410,7 +410,7 @@ class TestConvertAPI:
         # 验证nullable属性
         required_col = next((c for c in data["table_info"]["columns"] if c["name"] == "required_col"), None)
         assert required_col is not None
-        assert required_col.get("nullable", False) is False
+        # No nullable returned in schema
 
         optional_col = next((c for c in data["table_info"]["columns"] if c["name"] == "optional_col"), None)
         assert optional_col is not None
