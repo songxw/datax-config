@@ -44,6 +44,7 @@ class SeaTunnelGenerator:
             str: SeaTunnel配置字符串 (HOCON格式)
         """
         try:
+            target_db_type = target_db_type.lower()
             driver = self.DRIVER_MAPPING.get(source_db_type.lower(),
                                              self.DRIVER_MAPPING["mysql"])
             source_port = self.PORT_MAPPING.get(source_db_type.lower(), 3306)
@@ -51,12 +52,48 @@ class SeaTunnelGenerator:
             # 构建列列表 - 使用字面量反引号，不使用f-string中的${}语法
             columns = ["`" + col.name + "`" for col in table_info.columns]
 
-            # 构建字段映射
-            field_mapping = {"`" + col.name + "`": "`" + col.name + "`"
-                            for col in table_info.columns}
-
             # 构建列字符串（不使用f-string的join）
             columns_str = ', '.join(columns)
+
+            sink_block = ""
+            if target_db_type == "doris":
+                sink_block = f"""    Doris {{
+      fenodes = "doris_fe_host:8030"
+      username = "doris_username"
+      password = "doris_password"
+      database = "target_database"
+      table = "{table_info.name}"
+      batch_max_rows = 1024
+      batch_max_bytes = 10485760
+      batch_interval_ms = 1000
+
+      sink.properties.format = "json"
+      sink.properties.strip_outer_array = "true"
+
+      doris.config {{
+        format = "json"
+        read_json_by_line = "true"
+      }}
+    }}"""
+            elif target_db_type == "clickhouse":
+                sink_block = f"""    Clickhouse {{
+      host = "clickhouse_host:8123"
+      database = "target_database"
+      table = "{table_info.name}"
+      username = "clickhouse_username"
+      password = "clickhouse_password"
+      bulk_size = 20000
+    }}"""
+            elif target_db_type == "greenplum":
+                sink_block = f"""    Jdbc {{
+      driver = "org.postgresql.Driver"
+      url = "jdbc:postgresql://greenplum_host:5432/target_database"
+      username = "greenplum_username"
+      password = "greenplum_password"
+      generate_sink_sql = true
+      database = "target_database"
+      table = "{table_info.name}"
+    }}"""
 
             config = f"""{{
   env {{
@@ -84,24 +121,7 @@ class SeaTunnelGenerator:
   }}
 
   sink {{
-    Doris {{
-      fenodes = "doris_fe_host:8030"
-      username = "doris_username"
-      password = "doris_password"
-      database = "target_database"
-      table = "{table_info.name}"
-      batch_max_rows = 1024
-      batch_max_bytes = 10485760
-      batch_interval_ms = 1000
-
-      sink.properties.format = "json"
-      sink.properties.strip_outer_array = "true"
-
-      doris.config {{
-        format = "json"
-        read_json_by_line = "true"
-      }}
-    }}
+{sink_block}
   }}
 }}
 """
@@ -115,26 +135,8 @@ class SeaTunnelGenerator:
                             table_info: Any, params: Dict[str, Any]) -> str:
         """
         生成带具体参数的SeaTunnel配置
-
-        Args:
-            source_db_type: 源数据库类型
-            target_db_type: 目标数据库类型
-            table_info: 表信息
-            params: 连接参数
-                - source_host: 源数据库主机
-                - source_port: 源数据库端口
-                - source_database: 源数据库名
-                - source_username: 源数据库用户名
-                - source_password: 源数据库密码
-                - doris_host: Doris FE主机
-                - doris_port: Doris FE HTTP端口 (默认8030)
-                - doris_database: 目标数据库
-                - doris_username: Doris用户名
-                - doris_password: Doris密码
-
-        Returns:
-            str: SeaTunnel配置字符串 (HOCON格式)
         """
+        target_db_type = target_db_type.lower()
         driver = self.DRIVER_MAPPING.get(source_db_type.lower(),
                                          self.DRIVER_MAPPING["mysql"])
 
@@ -145,17 +147,57 @@ class SeaTunnelGenerator:
         source_username = params.get("source_username", "username")
         source_password = params.get("source_password", "password")
 
-        doris_host = params.get("doris_host", "localhost")
-        doris_port = params.get("doris_port", 8030)
-        doris_database = params.get("doris_database", "database")
-        doris_username = params.get("doris_username", "root")
-        doris_password = params.get("doris_password", "")
+        target_host = params.get(f"{target_db_type}_host", params.get("target_host", "localhost"))
+        target_port = params.get(f"{target_db_type}_port", params.get("target_port", 8030 if target_db_type == "doris" else (8123 if target_db_type == "clickhouse" else 5432)))
+        target_database = params.get(f"{target_db_type}_database", params.get("target_database", "database"))
+        target_username = params.get(f"{target_db_type}_username", params.get("target_username", "root"))
+        target_password = params.get(f"{target_db_type}_password", params.get("target_password", ""))
 
         # 构建列列表 - 使用字面量反引号
         columns = ["`" + col.name + "`" for col in table_info.columns]
 
         # 构建列字符串
         columns_str = ', '.join(columns)
+
+        sink_block = ""
+        if target_db_type == "doris":
+            sink_block = f"""    Doris {{
+      fenodes = "{target_host}:{target_port}"
+      username = "{target_username}"
+      password = "{target_password}"
+      database = "{target_database}"
+      table = "{table_info.name}"
+      batch_max_rows = 1024
+      batch_max_bytes = 10485760
+      batch_interval_ms = 1000
+
+      sink.properties.format = "json"
+      sink.properties.strip_outer_array = "true"
+
+      doris.config {{
+        format = "json"
+        read_json_by_line = "true"
+      }}
+    }}"""
+        elif target_db_type == "clickhouse":
+            sink_block = f"""    Clickhouse {{
+      host = "{target_host}:{target_port}"
+      database = "{target_database}"
+      table = "{table_info.name}"
+      username = "{target_username}"
+      password = "{target_password}"
+      bulk_size = 20000
+    }}"""
+        elif target_db_type == "greenplum":
+            sink_block = f"""    Jdbc {{
+      driver = "org.postgresql.Driver"
+      url = "jdbc:postgresql://{target_host}:{target_port}/{target_database}"
+      username = "{target_username}"
+      password = "{target_password}"
+      generate_sink_sql = true
+      database = "{target_database}"
+      table = "{table_info.name}"
+    }}"""
 
         config = f"""{{
   env {{
@@ -183,24 +225,7 @@ class SeaTunnelGenerator:
   }}
 
   sink {{
-    Doris {{
-      fenodes = "{doris_host}:{doris_port}"
-      username = "{doris_username}"
-      password = "{doris_password}"
-      database = "{doris_database}"
-      table = "{table_info.name}"
-      batch_max_rows = 1024
-      batch_max_bytes = 10485760
-      batch_interval_ms = 1000
-
-      sink.properties.format = "json"
-      sink.properties.strip_outer_array = "true"
-
-      doris.config {{
-        format = "json"
-        read_json_by_line = "true"
-      }}
-    }}
+{sink_block}
   }}
 }}
 """
@@ -210,16 +235,9 @@ class SeaTunnelGenerator:
                                   table_info: Any, params: Dict[str, Any]) -> str:
         """
         生成流式同步配置（基于Binlog/CDC）
-
-        Args:
-            source_db_type: 源数据库类型
-            target_db_type: 目标数据库类型
-            table_info: 表信息
-            params: 连接参数
-
-        Returns:
-            str: SeaTunnel流式配置字符串
         """
+        target_db_type = target_db_type.lower()
+
         # 获取参数
         source_host = params.get("source_host", "localhost")
         source_port = params.get("source_port", self.PORT_MAPPING.get(source_db_type.lower(), 3306))
@@ -227,14 +245,54 @@ class SeaTunnelGenerator:
         source_username = params.get("source_username", "username")
         source_password = params.get("source_password", "password")
 
-        doris_host = params.get("doris_host", "localhost")
-        doris_port = params.get("doris_port", 8030)
-        doris_database = params.get("doris_database", "database")
-        doris_username = params.get("doris_username", "root")
-        doris_password = params.get("doris_password", "")
+        target_host = params.get(f"{target_db_type}_host", params.get("target_host", "localhost"))
+        target_port = params.get(f"{target_db_type}_port", params.get("target_port", 8030 if target_db_type == "doris" else (8123 if target_db_type == "clickhouse" else 5432)))
+        target_database = params.get(f"{target_db_type}_database", params.get("target_database", "database"))
+        target_username = params.get(f"{target_db_type}_username", params.get("target_username", "root"))
+        target_password = params.get(f"{target_db_type}_password", params.get("target_password", ""))
 
         # 构建列列表 - 使用字面量反引号
         columns = ["`" + col.name + "`" for col in table_info.columns]
+
+        sink_block = ""
+        if target_db_type == "doris":
+            sink_block = f"""    Doris {{
+      fenodes = "{target_host}:{target_port}"
+      username = "{target_username}"
+      password = "{target_password}"
+      database = "{target_database}"
+      table = "{table_info.name}"
+      batch_max_rows = 1024
+      batch_max_bytes = 10485760
+      batch_interval_ms = 1000
+
+      sink.properties.format = "json"
+      sink.properties.strip_outer_array = "true"
+
+      sink.properties.row.default_parser = "json"
+      sink.properties.bulk_flush.max_bytes = 52428800
+      sink.properties.bulk_flush.max_rows = 200000
+      sink.properties.bulk_flush.max_ms = 60000
+    }}"""
+        elif target_db_type == "clickhouse":
+            sink_block = f"""    Clickhouse {{
+      host = "{target_host}:{target_port}"
+      database = "{target_database}"
+      table = "{table_info.name}"
+      username = "{target_username}"
+      password = "{target_password}"
+      bulk_size = 20000
+    }}"""
+        elif target_db_type == "greenplum":
+            sink_block = f"""    Jdbc {{
+      driver = "org.postgresql.Driver"
+      url = "jdbc:postgresql://{target_host}:{target_port}/{target_database}"
+      username = "{target_username}"
+      password = "{target_password}"
+      generate_sink_sql = true
+      database = "{target_database}"
+      table = "{table_info.name}"
+    }}"""
 
         # MySQL CDC配置
         if source_db_type.lower() == "mysql":
@@ -259,24 +317,7 @@ class SeaTunnelGenerator:
   }}
 
   sink {{
-    Doris {{
-      fenodes = "{doris_host}:{doris_port}"
-      username = "{doris_username}"
-      password = "{doris_password}"
-      database = "{doris_database}"
-      table = "{table_info.name}"
-      batch_max_rows = 1024
-      batch_max_bytes = 10485760
-      batch_interval_ms = 1000
-
-      sink.properties.format = "json"
-      sink.properties.strip_outer_array = "true"
-
-      sink.properties.row.default_parser = "json"
-      sink.properties.bulk_flush.max_bytes = 52428800
-      sink.properties.bulk_flush.max_rows = 200000
-      sink.properties.bulk_flush.max_ms = 60000
-    }}
+{sink_block}
   }}
 }}
 """

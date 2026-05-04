@@ -49,7 +49,7 @@ class DDLConverter:
     def __init__(self, source_db: str, target_db: str):
         self.source_db = source_db.lower()
         self.target_db = target_db.lower()
-        self.type_mapping = get_type_mapping(source_db)
+        self.type_mapping = get_type_mapping(source_db, target_db)
 
     def convert(self, ddl: str) -> ConvertResult:
         """
@@ -331,46 +331,83 @@ class DDLConverter:
 
             # 主键列必须为NOT NULL
             if col.is_primary or not col.nullable:
-                col_def += " NOT NULL"
+                if self.target_db != "clickhouse":
+                    col_def += " NOT NULL"
 
             if col.default_value:
                 col_def += f" DEFAULT {col.default_value}"
 
             if col.comment:
-                col_def += f" COMMENT '{col.comment}'"
+                if self.target_db == "clickhouse":
+                    col_def += f" COMMENT '{col.comment}'"
+                elif self.target_db == "doris":
+                    col_def += f" COMMENT '{col.comment}'"
+                # Greenplum comments are added separately
 
             col_lines.append(col_def)
 
         lines.append(',\n'.join(col_lines))
         lines.append(")")
 
-        # ENGINE = OLAP
-        lines.append("ENGINE = OLAP")
+        if self.target_db == "doris":
+            # ENGINE = OLAP
+            lines.append("ENGINE = OLAP")
 
-        # UNIQUE KEY（如果有主键）
-        if table_info.primary_keys:
-            pk_cols = ', '.join([f"`{pk}`" for pk in table_info.primary_keys])
-            lines.append(f"UNIQUE KEY ({pk_cols})")
+            # UNIQUE KEY（如果有主键）
+            if table_info.primary_keys:
+                pk_cols = ', '.join([f"`{pk}`" for pk in table_info.primary_keys])
+                lines.append(f"UNIQUE KEY ({pk_cols})")
 
-        # 表注释
-        if table_info.comment:
-            lines.append(f"COMMENT '{table_info.comment}'")
+            # 表注释
+            if table_info.comment:
+                lines.append(f"COMMENT '{table_info.comment}'")
 
-        # 分布式配置
-        if table_info.primary_keys:
-            # 使用第一个主键列作为分桶键
-            bucket_key = table_info.primary_keys[0]
-            lines.append(f"DISTRIBUTED BY HASH(`{bucket_key}`) BUCKETS 10")
-        else:
-            # 如果没有主键，使用第一列作为分桶键
-            if table_info.columns:
-                bucket_key = table_info.columns[0].name
+            # 分布式配置
+            if table_info.primary_keys:
+                # 使用第一个主键列作为分桶键
+                bucket_key = table_info.primary_keys[0]
                 lines.append(f"DISTRIBUTED BY HASH(`{bucket_key}`) BUCKETS 10")
+            else:
+                # 如果没有主键，使用第一列作为分桶键
+                if table_info.columns:
+                    bucket_key = table_info.columns[0].name
+                    lines.append(f"DISTRIBUTED BY HASH(`{bucket_key}`) BUCKETS 10")
 
-        # Doris特有的表属性
-        lines.append("PROPERTIES (")
-        lines.append("  \"replication_allocation\" = \"tag.location.default: 1\"")
-        lines.append(")")
+            # Doris特有的表属性
+            lines.append("PROPERTIES (")
+            lines.append("  \"replication_allocation\" = \"tag.location.default: 1\"")
+            lines.append(")")
+
+        elif self.target_db == "clickhouse":
+            lines.append("ENGINE = MergeTree()")
+            if table_info.primary_keys:
+                pk_cols = ', '.join([f"`{pk}`" for pk in table_info.primary_keys])
+                lines.append(f"ORDER BY ({pk_cols})")
+            else:
+                lines.append("ORDER BY tuple()")
+
+            # Clickhouse table comment
+            if table_info.comment:
+                lines.append(f"COMMENT '{table_info.comment}'")
+
+        elif self.target_db == "greenplum":
+            if table_info.primary_keys:
+                pk_cols = ', '.join([f"`{pk}`" for pk in table_info.primary_keys])
+                lines.append(f"DISTRIBUTED BY ({pk_cols});")
+            else:
+                if table_info.columns:
+                    lines.append(f"DISTRIBUTED BY (`{table_info.columns[0].name}`);")
+                else:
+                    lines.append("DISTRIBUTED RANDOMLY;")
+
+            # Greenplum table comment
+            if table_info.comment:
+                lines.append(f"COMMENT ON TABLE `{table_info.name}` IS '{table_info.comment}';")
+
+            # Greenplum column comments
+            for col in table_info.columns:
+                if col.comment:
+                    lines.append(f"COMMENT ON COLUMN `{table_info.name}`.`{col.name}` IS '{col.comment}';")
 
         return '\n'.join(lines)
 

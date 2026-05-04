@@ -1,6 +1,6 @@
 // 数据库类型
 export type SourceDBType = 'mysql' | 'postgresql' | 'oracle' | 'sqlserver'
-export type TargetDBType = 'doris'
+export type TargetDBType = 'doris' | 'clickhouse' | 'greenplum'
 export type SyncToolType = 'datax' | 'seatunnel'
 
 // 数据库选项
